@@ -19,7 +19,7 @@ def train_in_folds(clf, X_train, y_train, X_test):
 	oof_train = np.zeros((ntrain,))
 	oof_test = np.zeros((ntest,))
 	SEED = 0 # for reproducibility
-	NFOLDS = 15 # set folds for out-of-fold prediction
+	NFOLDS = 100 # set folds for out-of-fold prediction
 	kf = KFold(len(X_train), n_folds= NFOLDS, random_state=SEED)
 	oof_test_skf = np.empty((NFOLDS, ntest))
 
