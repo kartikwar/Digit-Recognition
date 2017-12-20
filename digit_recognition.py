@@ -8,51 +8,53 @@ from sklearn.model_selection import train_test_split
 warnings.filterwarnings('ignore')
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
-from sklearn.cross_validation import KFold
+from sklearn.model_selection import GridSearchCV
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
-def round_to_int(number):
-	return int(round(number))
 
-def train_in_folds(clf, X_train, y_train, X_test):
-	ntrain = X_train.shape[0]
-	ntest = X_test.shape[0]
-	oof_train = np.zeros((ntrain,))
-	oof_test = np.zeros((ntest,))
-	SEED = 0 # for reproducibility
-	NFOLDS = 100 # set folds for out-of-fold prediction
-	kf = KFold(len(X_train), n_folds= NFOLDS, random_state=SEED)
-	oof_test_skf = np.empty((NFOLDS, ntest))
+def determine_best_params_random_forest(X_train, y_train):
+	grid_values = {'n_estimators' : [1, 5, 25],
+	'max_features': [1,  2 , 3, 4 , 5 ] 	 
+	}
+	clf = RandomForestClassifier(random_state = 0)
+	grid_clf_accuracy = GridSearchCV(clf, param_grid=grid_values, 
+		n_jobs=-1, scoring='accuracy')
+	grid_clf_accuracy.fit(X_train, y_train)
+	best_params =grid_clf_accuracy.best_params_
+	return best_params
 
-	for i, (train_index, test_index) in enumerate(kf):
-		x_tr = X_train.iloc[train_index]
-		y_tr = y_train.iloc[train_index]
-		x_te = X_train.iloc[test_index]
-		clf.fit(x_tr, y_tr)
-		oof_train[test_index] = clf.predict(x_te)
-		oof_test_skf[i, :] = clf.predict(X_test)
+def train_data(X, y):
+	# best_params = determine_best_params_random_forest(X, y)
+	clf = MLPClassifier(solver='lbfgs', alpha=1e-5,
+		hidden_layer_sizes=(10, 10), random_state=1).fit(X, y)
+	# clf = RandomForestClassifier(max_features=5, n_estimators=25).fit(X, y)
+	return clf
 
-	oof_test[:] = oof_test_skf.mean(axis=0)
-	predictions = oof_test.tolist()
-	predictions = map(round_to_int, predictions)
-	return predictions
+def predict_test(classifier, X_test, test):
+	X_test_predict = classifier.predict(X_test)
+	test["ImageId"] = test.index.values
+	test["ImageId"] = test["ImageId"] + 1
+	test["Label"] = X_test_predict
+	test = test[["Label", "ImageId"]]
+	test.to_csv("Predicitons.csv", index=False) 			
 
-def train_data(X, y, test):
-	rcf = RandomForestClassifier()
-	predictions = train_in_folds(rcf, X, y, test)
-	return predictions
-
-def save_predictions(predictions, X_test):
-	X_test["ImageId"] = X_test.index.values
-	X_test["ImageId"] = X_test["ImageId"] + 1
-	X_test["Label"] = predictions
-	# print X_test["Label"].dtype
-	# X_test["Label"] = round(X_test["Label"])
-	X_test = X_test[["Label", "ImageId"]]
-	X_test.to_csv("Predicitons.csv", index=False) 		
+def preprocessing(train, validation):
+	y_train = train["label"]
+	X_train, X_validation = train.drop('label', axis=1), validation.copy()
+	X_train = StandardScaler().fit_transform(X_train)
+	pca = PCA(n_components=20)
+	X_train = pca.fit_transform(X_train)
+	# print (pca.explained_variance_ratio_)
+	validation = StandardScaler().fit_transform(validation)
+	validation = pca.fit_transform(validation)
+	return X_train, y_train, validation, X_validation
 
 if __name__ == '__main__':
-	train, test = pd.read_csv('train.csv'), pd.read_csv('test.csv')
-	y_train = train["label"]
-	X_train, X_test = train.drop('label', axis=1), test
-	predictions = train_data(X_train, y_train, X_test)
-	save_predictions(predictions, X_test)
+	train, validation = pd.read_csv('train.csv'), pd.read_csv('test.csv')
+	X_train, y_train, validation, X_validation = preprocessing(train,
+		validation)
+	classifier = train_data(X_train, y_train)
+	predict_test(classifier, validation, X_validation)
+
